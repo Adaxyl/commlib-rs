@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gconfig>
+<data>
+<cell name="index">1</cell>
+<cell name="name">NormalMissionCount</cell>
+<cell name="type">int</cell>
+<cell name="value">99999</cell>
+</data>
+<data>
+<cell name="index">2</cell>
+<cell name="name">HardMissionCount</cell>
+<cell name="type">int</cell>
+<cell name="value">3</cell>
+</data>
+</gconfig>

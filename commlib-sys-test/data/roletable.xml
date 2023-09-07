@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roletable>
+    <data>
+        <cell name="id">1</cell>
+        <cell name="name">role1</cell>
+        <cell name="caste">3</cell>
+        <cell name="lv">1</cell>
+    </data>
+    <data>
+        <cell name="id">2</cell>
+        <cell name="name">role2</cell>
+        <cell name="caste">4</cell>
+        <cell name="lv">2</cell>
+    </data>
+</roletable>

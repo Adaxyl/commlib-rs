@@ -1,3 +1,5 @@
+use crate::DataTable;
+
 #[derive(Default, Debug, Clone)]
 pub struct XmlReader {
     pub key: String,
@@ -186,5 +188,96 @@ impl XmlReader {
             }
         }
         Some(list)
+    }
+    //读取xml配置表
+    pub fn read_data_table(path: &String) -> Result<DataTable, String> {
+        // 读取文件到内存并解析
+        let content_r = std::fs::read_to_string(path);
+        match content_r {
+            Ok(content) => Self::read_data_string(&content),
+            Err(e) => {
+                let errmsg = format!("parse xml file({:?}) error: {}.", path, e);
+                println!("{errmsg}");
+                Err(errmsg)
+            }
+        }
+    }
+    pub fn get_data_table_fields(node: &roxmltree::Node) -> Vec<String> {
+        let mut attrs: Vec<String> = Vec::new();
+        // 遍历 data 节点
+        for data_node in node
+            .children()
+            .filter(|node| node.tag_name().name() == "data")
+        {
+            // 遍历 cell 节点
+            for cell_node in data_node
+                .descendants()
+                .filter(|node| node.tag_name().name() == "cell")
+            {
+                let name = cell_node
+                    .attribute("name")
+                    .expect("Attribute 'name' not found");
+                let content = cell_node.text().expect("Cell content not found");
+                if attrs.contains(&name.to_string()) {
+                    continue;
+                }
+                attrs.push((&name).to_string());
+                log::debug!("Name: {}, Content: {}", name, content);
+            }
+        }
+        attrs
+    }
+    pub fn read_data_string(xml_data: &str) -> Result<DataTable, String> {
+        if xml_data.len() == 0 {
+            let errmsg = format!("xml_data.len() == 0 ");
+            return Err(errmsg);
+        }
+        let opt = roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..roxmltree::ParsingOptions::default()
+        };
+        let doc = match roxmltree::Document::parse_with_options(&xml_data, opt) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let errmsg = format!(
+                    "parse xml xml_data failed!!! error: {}, len: {}.",
+                    e,
+                    xml_data.len()
+                );
+                println!("{errmsg}");
+                return Err(errmsg);
+            }
+        };
+        //doc
+        let mut dt = DataTable::new(
+            doc.root_element().tag_name().name().to_string(),
+            Self::get_data_table_fields(&doc.root_element()),
+        );
+
+        if dt.fields.is_empty() {
+            return Err("dt.fields.is_empty()".to_string());
+        }
+        let mut row_datas: Vec<Vec<String>> = Vec::new();
+        // 遍历 cell 节点
+        for data_node in doc
+            .root_element()
+            .children()
+            .filter(|node| node.is_element() && node.tag_name().name() == "data")
+        {
+            let mut rowstrs: Vec<String> = Vec::new();
+            for cell_node in data_node
+                .children()
+                .filter(|node| node.is_element() && node.tag_name().name() == "cell")
+            {
+                let content = cell_node.text().expect("Cell content not found");
+
+                println!(" Content: {}", content);
+                rowstrs.push(content.to_string());
+            }
+            row_datas.push(rowstrs);
+        }
+
+        dt.set_data(row_datas);
+        Ok(dt)
     }
 }

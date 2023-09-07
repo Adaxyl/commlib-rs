@@ -69,3 +69,6 @@ pub use globals::*;
 /// 通用定义
 pub mod commlib_def;
 pub use commlib_def::*;
+///
+pub mod data_schema;
+pub use data_schema::DataTable;

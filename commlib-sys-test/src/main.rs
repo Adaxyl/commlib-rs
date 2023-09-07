@@ -9,7 +9,10 @@ mod cli_service;
 
 mod cli_app_startup;
 mod cli_manager;
-
+//配置文件
+mod config;
+mod config_manager;
+mod config_table;
 fn main() {
     // panic hook
     std::panic::set_hook(Box::new(|panic_info| {

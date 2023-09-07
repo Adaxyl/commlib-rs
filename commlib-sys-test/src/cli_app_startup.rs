@@ -11,17 +11,19 @@
 
 use std::sync::Arc;
 
-use commlib_sys::{connect_to_tcp_server, G_SERVICE_NET, G_SERVICE_SIGNAL};
+use commlib_sys::{connect_to_tcp_server, data_schema, G_SERVICE_NET, G_SERVICE_SIGNAL};
 use commlib_sys::{ConnId, NetPacketGuard, NodeState, ServiceRs};
 
 use app_helper::Startup;
 
 use crate::cli_conf::G_CLI_CONF;
 use crate::cli_manager::G_MAIN;
+use crate::config_manager::ConfigManager;
 
 use super::cli_service::CliService;
 use super::cli_service::G_CLI_SERVICE;
-
+use crate::config::role_table::{self, RoleTable};
+use crate::config_table::ConfigCid;
 thread_local! {
     ///
     pub static G_APP_STARTUP: std::cell::RefCell<Startup> = {
@@ -49,9 +51,10 @@ pub fn exec(srv: &Arc<CliService>) {
     let srv2 = srv.clone();
     G_APP_STARTUP.with(|g| {
         let mut startup = g.borrow_mut();
-
+        //配置文件读取
+        startup.add_step("load config table", move || do_load_config_data(&srv2));
         //
-        startup.add_step("connect", move || do_connect_to_test_server(&srv2));
+        // startup.add_step("connect", move || do_connect_to_test_server(&srv2));
 
         // run
         startup.exec();
@@ -71,7 +74,10 @@ fn cli_service_init(srv: &Arc<CliService>) -> bool {
     //
     app_helper::with_conf_mut!(G_CLI_CONF, cfg, { cfg.init(handle.xml_config()) });
 
-    //
+    let mut binding = ConfigManager::get_instance();
+    let mut g = binding.lock().unwrap();
+    let data = &mut *g;
+    data.init();
     handle.set_state(NodeState::Start);
     true
 }
@@ -121,4 +127,32 @@ pub fn do_connect_to_test_server(srv: &Arc<CliService>) -> bool {
 
     //
     hd_opt.is_some()
+}
+pub fn do_load_config_data(srv: &Arc<CliService>) -> bool {
+    let callback = Box::new(|ds: Box<data_schema::DataSchema>| {
+        // 在闭包函数内处理加载完成后的操作
+        println!("Data schema loaded with");
+        // 处理 data_schema 对象
+        let mut binding = ConfigManager::get_instance();
+        let mut g = binding.lock().unwrap();
+        let data = &mut *g;
+        data.reload_all(ds);
+    });
+    data_schema::load_data_schema_from_xml(srv, "data\\", callback);
+
+    // 获取配置项映射
+    let binding = ConfigManager::get_instance();
+    let mut ac = binding.lock().unwrap();
+    let cc = &mut *ac;
+    //let ct = cc.get_config_table(ConfigCid::Cid_Role);
+
+    let role_binding = RoleTable::get_instance();
+    let mut role_ac = role_binding.lock().unwrap();
+    let role_cc = &mut *role_ac;
+    let config_map = role_cc.get_role_configs();
+    for (key, value) in config_map {
+        println!("Key: {}, Name: {}, ID: {}", key, value.name, value.id);
+    }
+
+    true
 }

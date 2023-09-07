@@ -9,21 +9,19 @@
 //!     });
 //! '''
 
+use app_helper::Startup;
+use commlib_sys::service_net::TcpConn;
+use commlib_sys::{connect_to_tcp_server, data_schema, G_SERVICE_NET};
+use commlib_sys::{ConnId, NetPacketGuard, ServiceRs};
 use std::sync::Arc;
 
-use commlib_sys::{connect_to_tcp_server, data_schema, G_SERVICE_NET, G_SERVICE_SIGNAL};
-use commlib_sys::{ConnId, NetPacketGuard, NodeState, ServiceRs};
-
-use app_helper::Startup;
-
+use super::cli_service::CliService;
 use crate::cli_conf::G_CLI_CONF;
 use crate::cli_manager::G_MAIN;
-use crate::config_manager::ConfigManager;
-
-use super::cli_service::CliService;
-use super::cli_service::G_CLI_SERVICE;
 use crate::config::role_table::{self, RoleTable};
+use crate::config_manager::ConfigManager;
 use crate::config_table::ConfigCid;
+
 thread_local! {
     ///
     pub static G_APP_STARTUP: std::cell::RefCell<Startup> = {
@@ -44,10 +42,13 @@ pub fn resume(srv: &Arc<CliService>) {
 
 ///
 pub fn exec(srv: &Arc<CliService>) {
-    //
-    cli_service_init(srv);
+    // pre-startup, main manager init
+    G_MAIN.with(|g| {
+        let mut main_manager = g.borrow_mut();
+        main_manager.init(srv);
+    });
 
-    //
+    // startup step by step
     let srv2 = srv.clone();
     G_APP_STARTUP.with(|g| {
         let mut startup = g.borrow_mut();
@@ -56,30 +57,19 @@ pub fn exec(srv: &Arc<CliService>) {
         //
         // startup.add_step("connect", move || do_connect_to_test_server(&srv2));
 
-        // run
+        // run startup
         startup.exec();
     });
-}
 
-/// Init in-service
-fn cli_service_init(srv: &Arc<CliService>) -> bool {
-    let handle = srv.get_handle();
-
-    // ctrl-c stop, DEBUG ONLY
-    G_SERVICE_SIGNAL.listen_sig_int(G_CLI_SERVICE.as_ref(), || {
-        println!("WTF!!!!");
+    // startup over, main manager lazy init
+    G_MAIN.with(|g| {
+        let mut main_manager = g.borrow_mut();
+        main_manager.lazy_init(srv);
     });
-    log::info!("\nGAME init ...\n");
-
-    //
-    app_helper::with_conf_mut!(G_CLI_CONF, cfg, { cfg.init(handle.xml_config()) });
-
     let mut binding = ConfigManager::get_instance();
     let mut g = binding.lock().unwrap();
     let data = &mut *g;
     data.init();
-    handle.set_state(NodeState::Start);
-    true
 }
 
 ///
@@ -89,7 +79,8 @@ pub fn do_connect_to_test_server(srv: &Arc<CliService>) -> bool {
         std::format!("{}:{}", cfg.remote.addr, cfg.remote.port)
     });
 
-    let conn_fn = |hd: ConnId| {
+    let conn_fn = |conn: Arc<TcpConn>| {
+        let hd = conn.hd;
         log::info!("[hd={}] conn_fn", hd);
 
         //
@@ -97,21 +88,29 @@ pub fn do_connect_to_test_server(srv: &Arc<CliService>) -> bool {
             let mut cli_manager = g.borrow_mut();
 
             let push_encrypt_token = false;
-            cli_manager.proxy.on_incomming_conn(hd, push_encrypt_token);
+            cli_manager
+                .proxy
+                .on_incomming_conn(conn.as_ref(), push_encrypt_token);
         });
     };
 
-    let pkt_fn = |hd: ConnId, pkt: NetPacketGuard| {
+    let pkt_fn = |conn: Arc<TcpConn>, pkt: NetPacketGuard| {
+        let hd = conn.hd;
         log::info!("[hd={}] msg_fn", hd);
 
         G_MAIN.with(|g| {
             let mut main_manager = g.borrow_mut();
-            main_manager.proxy.on_net_packet(hd, pkt);
+            main_manager.proxy.on_net_packet(conn.as_ref(), pkt);
         });
     };
 
     let close_fn = |hd: ConnId| {
         log::info!("[hd={}] close_fn", hd);
+
+        G_MAIN.with(|g| {
+            let mut main_manager = g.borrow_mut();
+            main_manager.proxy.on_hd_lost(hd);
+        });
     };
 
     //
